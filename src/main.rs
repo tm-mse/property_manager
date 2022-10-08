@@ -24,14 +24,25 @@ fn main() {
     let iter = xl.worksheets();
     for t in iter {
         let file_path = PathBuf::from(&t.0);
-        let _dest = file_path.with_extension("csv");
-        let mut dest = BufWriter::new(File::create(&_dest).unwrap());
+        let path_dest = file_path.with_extension("csv");
+        let mut dest = BufWriter::new(File::create(&path_dest).unwrap());
 
-        write_range(&mut dest, &t.1).unwrap_or_else(|error| {
+        write_range(&mut dest, &t.1).unwrap_or_else(|_error| {
                 print!("Cannot retrieve csv file : {}", t.0);
             });
 
-        let df = get_df(_dest);
+        let df = match get_df(path_dest) {
+            Ok(df) => df,
+            Err(PolarsError::NoData(e)) => panic!("Cannot load the csv {} : {}", t.0 ,e),
+            Err(PolarsError::ArrowError(e)) => panic!("Cannot load the csv {} : {}", t.0 ,e),
+            Err(PolarsError::InvalidOperation(e)) => panic!("Cannot load the csv {} : {}", t.0 ,e),
+            Err(PolarsError::SchemaMisMatch(e)) => panic!("Cannot load the csv {} : {}", t.0 ,e),
+            Err(PolarsError::ShapeMisMatch(e)) => panic!("Cannot load the csv {} : {}", t.0 ,e),
+            Err(PolarsError::ComputeError(e)) => panic!("Cannot load the csv {} : {}", t.0 ,e),
+            Err(PolarsError::NotFound(e)) => panic!("Cannot load the csv {} : {}", t.0 ,e),
+            Err(PolarsError::Io(e)) => panic!("Cannot load the csv {} : {}", t.0 ,e),
+            Err(PolarsError::Duplicate(e)) => panic!("Cannot load the csv {} : {}", t.0 ,e),
+        };
         println!("{:?}", df);
 
     }
@@ -59,9 +70,9 @@ fn write_range<W: Write>(dest: &mut W, range: &Range<DataType>) -> std::io::Resu
 }
 
 fn get_df(path: PathBuf) -> PolarsResult<DataFrame> {
-    CsvReader::from_path(path)?
-        .has_header(true)
-        .finish()
+    Ok(CsvReader::from_path(path)?
+        .has_header(false)
+        .finish()?)
 }
 //TO DO :
 //  [X]transformer tous les sheets en fichier csv
