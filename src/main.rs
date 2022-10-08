@@ -1,12 +1,15 @@
 extern crate office;
 use std::env;
-use office::{Excel, DataType};
 use std::path::PathBuf;
+use calamine::{open_workbook_auto, Reader, Range, DataType};
+use std::io::{BufWriter, Write};
+use std::fs::File;
+use polars::prelude::*;
 
-fn main() {
+fn main() { 
     
     // Take the argumnents passed by the user
-    let args: Vec<String> = env::args().collect();
+    let _args: Vec<String> = env::args().collect();
     let file = env::args()
         .nth(1)
         .expect("Make sure the file path is correct...");
@@ -17,28 +20,51 @@ fn main() {
         _ => panic!("Expecting an excel file"),
     }
     
-    // Read the excel file
-    let mut workbook = Excel::open(&sce).unwrap();
-    let sheets = workbook.sheet_names().unwrap();
-    println!("Sheets: {:#?}", &sheets);
-     
-    for sheet in sheets {
-        let range: office::Range = workbook.worksheet_range(&sheet).unwrap();
-        let total_cells = range.get_size().0 * (range.get_size().1); 
-        let non_empty_cells: usize = range.rows().map(|r| {r.iter().filter(|cell| cell != &&DataType::Empty).count()
-            }).sum();
-        println!("Found {} cells in {}, including {} non empty cells", 
-                 total_cells, &sheet, non_empty_cells);
+    let mut xl = open_workbook_auto(&sce).unwrap(); 
+    let iter = xl.worksheets();
+    for t in iter {
+        let file_path = PathBuf::from(&t.0);
+        let _dest = file_path.with_extension("csv");
+        let mut dest = BufWriter::new(File::create(&_dest).unwrap());
+
+        write_range(&mut dest, &t.1).unwrap_or_else(|error| {
+                print!("Cannot retrieve csv file : {}", t.0);
+            });
+
+        let df = get_df(_dest);
+        println!("{:?}", df);
+
     }
-    
-  //  let total_cells = range.get_size().0 * range.get_size().1;
-  //  let non_empty_cells: usize = range.rows().map(|r| {r.iter().filter(|cell| cell != &&DataType::Empty).count()
-  //      }).sum();
-  //  println!("Found {} cells in {}, including {} non empty cells", 
-  //           total_cells, &sheets[0], non_empty_cells);
 }
 
+fn write_range<W: Write>(dest: &mut W, range: &Range<DataType>) -> std::io::Result<()> {
+    let n = range.get_size().1 - 1;
+    for r in range.rows() {
+        for (i, c) in r.iter().enumerate() {
+            match *c {
+                DataType::Empty => Ok(()),
+                DataType::String(ref s) => write!(dest, "{}", s),
+                DataType::Float(ref f) | DataType::DateTime(ref f) => write!(dest, "{}", f),
+                DataType::Int(ref i) => write!(dest, "{}", i),
+                DataType::Error(ref e) => write!(dest, "{:?}", e),
+                DataType::Bool(ref b) => write!(dest, "{}", b),
+            }?;
+            if i != n {
+                write!(dest, ";")?;
+            }
+        }
+        write!(dest, "\r\n")?;
+    }
+    Ok(())
+}
+
+fn get_df(path: PathBuf) -> PolarsResult<DataFrame> {
+    CsvReader::from_path(path)?
+        .has_header(true)
+        .finish()
+}
 //TO DO :
+//  [X]transformer tous les sheets en fichier csv
 //  [] Parser des tableaux exploitable
 //      + nom du locataire
 //      + addresse du locataire
