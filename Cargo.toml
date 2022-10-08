@@ -7,6 +7,5 @@ edition = "2021"
 
 [dependencies]
 calamine = "0.18.0"
-color-eyre = "0.6.2"
 office = "0.8.1"
 polars = "0.24.3"
